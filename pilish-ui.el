@@ -269,6 +269,18 @@ When nil, candidates are still completed, but their annotations are hidden."
   :type 'boolean
   :group 'pilish)
 
+(defcustom pilish-command-argument-completions
+  '(("model" . pilish-model-argument-completions))
+  "Alist mapping slash command names to argument completion functions.
+Each function receives the argument text typed so far and returns a list
+of candidate strings, or nil when no candidates apply.
+
+The default entry completes /model arguments from the running Pi session.
+Add entries for commands with fixed argument values, such as a custom
+prompt template."
+  :type '(alist :key-type string :value-type function)
+  :group 'pilish)
+
 (defcustom pilish-copy-raw-markdown nil
   "Whether to copy raw markdown from the chat buffer.
 When non-nil, copy commands (`kill-ring-save', `kill-region') preserve

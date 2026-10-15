@@ -3217,6 +3217,71 @@ only offer our own capfs (slash commands, file references, paths)."
       (should (string-match-p "Select the active model" (funcall annotate "model")))
       (should (member "other" (nth 2 result))))))
 
+(ert-deftest pilish-test-command-capf-arguments-ignore-free-text-commands ()
+  "No slash candidate list is offered after an argument-free command."
+  (with-temp-buffer
+    (pilish-input-mode)
+    (insert "/compact focus on the API")
+    (should-not (pilish--command-capf)))
+  (with-temp-buffer
+    (pilish-input-mode)
+    (setq pilish--commands '((:name "unknown-cmd" :description "Ext")))
+    (insert "/unknown-cmd some args")
+    (should-not (pilish--command-capf))))
+
+(ert-deftest pilish-test-command-capf-completes-model-arguments ()
+  "/model arguments complete against live-session model labels."
+  (let ((proc (start-process "pilish-test-model" nil "cat")))
+    (unwind-protect
+        (with-temp-buffer
+          (pilish-input-mode)
+          (cl-letf (((symbol-function 'pilish--get-process)
+                     (lambda () proc))
+                    ((symbol-function 'pilish--rpc-sync)
+                     (lambda (_proc _command &rest _)
+                       '(:success t
+                         :data (:models
+                                [(:name "gpt-5.1-codex" :provider "openai")
+                                 (:name "Claude Sonnet 4.5" :provider "anthropic")])))))
+            (insert "/model gpt")
+            (let ((result (pilish--command-capf)))
+              (should (= (nth 0 result) 8))
+              (should (= (nth 1 result) (point)))
+              (should (equal (nth 2 result) '("gpt-5.1-codex [openai]"))))
+            (erase-buffer)
+            (insert "/model sonnet")
+            (let ((result (pilish--command-capf)))
+              (should (equal (nth 2 result) '("Sonnet 4.5 [anthropic]"))))))
+      (delete-process proc))))
+
+(ert-deftest pilish-test-model-argument-completions-formats-labels ()
+  "Model argument candidates use the selector's display labels."
+  (let ((proc (start-process "pilish-test-model-labels" nil "cat")))
+    (unwind-protect
+        (with-temp-buffer
+          (pilish-input-mode)
+          (cl-letf (((symbol-function 'pilish--get-process)
+                     (lambda () proc))
+                    ((symbol-function 'pilish--rpc-sync)
+                     (lambda (_proc _command &rest _)
+                       '(:success t
+                         :data (:models
+                                [(:name "Claude Opus 4.1" :provider "anthropic")
+                                 (:name "claude-opus-4-1" :provider "anthropic")
+                                 (:name "Other" :provider nil)])))))
+            (should (equal (pilish-model-argument-completions "opus")
+                           '("Opus 4.1 [anthropic]" "opus-4-1 [anthropic]")))
+            (should (equal (pilish-model-argument-completions "other")
+                           '("Other [?]")))
+            (should-not (pilish-model-argument-completions "zzz"))))
+      (delete-process proc))))
+
+(ert-deftest pilish-test-model-argument-completions-without-process ()
+  "Model argument completion gracefully returns nil without a process."
+  (with-temp-buffer
+    (pilish-input-mode)
+    (should-not (pilish-model-argument-completions "gpt"))))
+
 (ert-deftest pilish-test-send-prompt-sends-literal ()
   "pilish--send-prompt sends text literally (no expansion).
 Pi handles command expansion on the server side."

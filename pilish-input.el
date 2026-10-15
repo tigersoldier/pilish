@@ -255,7 +255,8 @@ markup visibility, mode identity, and keybindings.  Set
       (md-ts--set-hide-markup nil)))
   (setq-local header-line-format '(:eval (pilish--header-line-string)))
   ;; Reset inherited completions (text-mode adds ispell, etc.) — our
-  ;; input buffer should only offer slash commands, file refs, and paths.
+  ;; input buffer should only offer slash commands and their arguments,
+  ;; file refs, and paths.
   (setq-local completion-at-point-functions nil)
   (add-hook 'completion-at-point-functions #'pilish--command-capf nil t)
   (add-hook 'completion-at-point-functions #'pilish--file-reference-capf nil t)
@@ -569,26 +570,86 @@ Shows its description and any argument placeholder hint."
       (and parts (concat " " (mapconcat #'identity parts "  "))))))
 
 (defun pilish--command-capf ()
-  "Completion-at-point function for slash-command names.
-Candidates include built-in commands and pi's `get_commands' RPC
-commands, annotated with descriptions and argument hints.  Argument
-values are completed by the argument-completion extension added
-separately."
+  "Complete slash commands and known argument values at point.
+On the first line, command names complete after the leading slash and
+carry descriptions and argument hints as annotations.  After a space,
+commands registered in `pilish-command-argument-completions' complete
+their argument values instead.  This standard CAPF interface is usable
+by company-mode, corfu, and Emacs's built-in completion."
   (when (pilish--slash-command-context-p)
-    (let* ((start (1+ (point-min)))
-           (prefix (buffer-substring start (point)))
-           (entries (pilish--slash-command-entries))
-           (commands (mapcar (lambda (entry) (plist-get entry :name))
-                             entries)))
-      (unless (string-match-p "[ \t]" prefix)
-        (append
-         (list start (point) commands :exclusive 'no)
-         (when pilish-command-annotations-enabled
-           (list
-            :annotation-function
-            (lambda (candidate)
-              (pilish--command-annotation-string
-               (pilish--slash-command-entry candidate entries))))))))))
+    (let* ((line (buffer-substring (1+ (point-min)) (line-end-position)))
+           (space-idx (and (string-match "[ \t]" line) (match-beginning 0)))
+           (name (substring line 0 (or space-idx (length line))))
+           (name-start (1+ (point-min)))
+           (args-p (and space-idx (> (point) (+ name-start space-idx)))))
+      (if args-p
+          (when-let* ((completion-entry
+                       (assoc name pilish-command-argument-completions)))
+            (let* ((arg-start (+ name-start space-idx 1))
+                   (prefix (buffer-substring arg-start (point)))
+                   (candidates (funcall (cdr completion-entry) prefix)))
+              (and candidates
+                   (list arg-start (point) candidates :exclusive 'no))))
+        (let* ((entries (pilish--slash-command-entries))
+               (commands (mapcar (lambda (entry) (plist-get entry :name))
+                                 entries)))
+          (append
+           (list name-start (point) commands :exclusive 'no)
+           (when pilish-command-annotations-enabled
+             (list
+              :annotation-function
+              (lambda (candidate)
+                (pilish--command-annotation-string
+                 (pilish--slash-command-entry candidate entries)))))))))))
+
+;;;; /model Argument Completion
+
+(defconst pilish--models-cache-ttl 60
+  "Seconds before the cached /model argument candidate list expires.")
+
+(defvar-local pilish--models-cache nil
+  "Cached (label . model) alist for /model argument completion.")
+
+(defvar-local pilish--models-cache-time nil
+  "Float time when `pilish--models-cache' was last fetched.")
+
+(defun pilish--available-models ()
+  "Return cached (label . model) entries for available models, or nil.
+Refetches with `get_available_models' when the cache is stale."
+  (when-let* ((proc (pilish--get-process)))
+    (when (and (processp proc) (process-live-p proc))
+      (let ((now (float-time)))
+        (when (or (null pilish--models-cache-time)
+                  (> (- now pilish--models-cache-time)
+                     pilish--models-cache-ttl))
+          (setq pilish--models-cache
+                (condition-case nil
+                    (let* ((response
+                            (pilish--rpc-sync
+                             proc '(:type "get_available_models") 3))
+                           (models (plist-get (plist-get response :data)
+                                              :models)))
+                      (mapcar
+                       (lambda (model)
+                         (cons (format "%s [%s]"
+                                       (pilish--shorten-model-name
+                                        (plist-get model :name))
+                                       (or (plist-get model :provider) "?"))
+                               model))
+                       models))
+                  (error nil)))
+          (setq pilish--models-cache-time now)))
+        pilish--models-cache)))
+
+(defun pilish-model-argument-completions (prefix)
+  "Return available model labels matching PREFIX for /model arguments.
+Labels match those used by `pilish-select-model', so completing and
+sending a model command selects it without another prompt."
+  (let ((labels (mapcar #'car (pilish--available-models))))
+    (and labels
+         (cl-remove-if-not
+          (lambda (label) (string-prefix-p prefix label t))
+          labels))))
 
 ;;;; Editor Features: File Reference (@)
 
