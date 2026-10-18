@@ -29,9 +29,8 @@
 ;; history navigation (comint/eshell-style M-p/M-n), incremental
 ;; history search (readline-style C-r), file reference completion (@),
 ;; path completion (Tab), slash-command and argument completion, and fuzzy
-;; in-buffer completion through company-mode (enabled by default; Corfu can
-;; also be used), message queuing (follow-up and steering), and send/abort
-;; commands.
+;; in-buffer completion through Emacs's standard completion interface,
+;; message queuing (follow-up and steering), and send/abort commands.
 ;;
 ;; Key entry points:
 ;;   `pilish-send'                  Send prompt (C-c C-c)
@@ -49,7 +48,6 @@
 
 (require 'pilish-render)
 (require 'ring)
-(require 'company)
 
 ;;;; Input History (comint/eshell style)
 
@@ -264,11 +262,9 @@ markup visibility, mode identity, and keybindings.  Set
   (add-hook 'completion-at-point-functions #'pilish--command-capf nil t)
   (add-hook 'completion-at-point-functions #'pilish--file-reference-capf nil t)
   (add-hook 'completion-at-point-functions #'pilish--path-capf nil t)
-  ;; Company should use only Pilish's own CAPFs, with Emacs's flex style
-  ;; allowing fuzzy subsequence matches for commands, files, and paths.
-  (setq-local company-backends '(company-capf))
+  ;; Keep completion front-end agnostic; Emacs's flex style allows fuzzy
+  ;; subsequence matches for commands, files, and paths.
   (setq-local completion-styles '(flex))
-  (company-mode 1)
   (add-hook 'post-self-insert-hook #'pilish--maybe-complete-at nil t)
   (add-hook 'isearch-mode-hook #'pilish--history-isearch-setup nil t)
   (add-hook 'kill-buffer-query-functions
@@ -583,7 +579,7 @@ On the first line, command names complete after the leading slash and
 carry descriptions and argument hints as annotations.  After a space,
 commands registered in `pilish-command-argument-completions' complete
 their argument values instead.  This standard CAPF interface is usable
-by company-mode, corfu, and Emacs's built-in completion."
+by Emacs and any compatible in-buffer completion front end."
   (when (pilish--slash-command-context-p)
     (let* ((line (buffer-substring (1+ (point-min)) (line-end-position)))
            (space-idx (and (string-match "[ \t]" line) (match-beginning 0)))
@@ -675,30 +671,17 @@ sending a model command selects it without another prompt."
 
 ;;;; In-Buffer Completion Front Ends
 
-(defun pilish--true-bound-p (variable)
-  "Return VARIABLE's value when it is bound and non-nil."
-  (and (boundp variable) (symbol-value variable)))
-
 (defun pilish--in-buffer-completion-active-p ()
-  "Return non-nil when an in-buffer completion front-end is available."
-  (let ((default-completion (default-value 'completion-in-region-function)))
-    (or (pilish--true-bound-p 'company-mode)
-        (pilish--true-bound-p 'corfu-mode)
-        (not (eq completion-in-region-function default-completion)))))
+  "Return non-nil when a buffer-local completion front-end is active."
+  (not (eq completion-in-region-function
+           (default-value 'completion-in-region-function))))
 
 (defun pilish--run-in-buffer-completion ()
-  "Start completion at point with the active in-buffer front-end.
-company-mode gets `company-complete'; other front-ends use
-`completion-at-point'.  Return non-nil when a front-end is active."
-  (cond
-   ((pilish--true-bound-p 'company-mode)
-    (when (fboundp 'company-complete)
-      (funcall (indirect-function 'company-complete)))
-    t)
-   ((pilish--in-buffer-completion-active-p)
+  "Run `completion-at-point' when an in-buffer front-end is active.
+Return non-nil when completion was started."
+  (when (pilish--in-buffer-completion-active-p)
     (completion-at-point)
-    t)
-   (t nil)))
+    t))
 
 (defun pilish--schedule-in-buffer-completion ()
   "Schedule in-buffer completion after the current command."

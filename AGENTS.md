@@ -30,9 +30,8 @@ browser entry points; they do not require `browse`.  Browse similarly
 declares the menu transition functions it calls.  The top-level load order
 makes those commands available without introducing a cycle.
 
-External package dependencies:
+External package dependency:
 
-- `company` ← in-buffer completion front-end enabled by default in input buffers
 - `md-ts-mode` ← tree-sitter markdown major mode used by chat buffers
   (loading `pilish` must not globally claim unrelated Markdown files)
 
@@ -66,7 +65,7 @@ latch on delayed agent/compaction starts.
 | `pilish-ui.el` | Shared session/buffer state, accessors, faces, customization, chat/input modes and keymaps, header/activity UI, and local slash-command dispatch; requires core and grammars, not jsonl |
 | `pilish-render.el` | Streaming and history rendering for user, assistant, branch-summary, and compaction messages; tool output, deferred completed-tool cooling outside the hot tail, fontification, diffs, and deferred history table postprocessing |
 | `pilish-table.el` | Display-only pipe table decoration, wrapping, overlay management, and resize refresh over UI visible-text/scroll seams |
-| `pilish-input.el` | Input history/isearch, send/abort, fuzzy Company completion, file/path/slash completion, queuing, and local `/resume` dispatch to the session browser |
+| `pilish-input.el` | Input history/isearch, send/abort, CAPF-compatible file/path/slash completion, queuing, and local `/resume` dispatch to the session browser |
 | `pilish-menu.el` | Transient menu; guarded new/reload/resume transitions; canonical jsonl cwd/name metadata; model, thinking, command, export, and stats actions; `r` sessions and `w` tree entries |
 | `pilish-browse.el` | Persistent magit-section session/tree browsers: time-sliced disk session discovery, filters/search/sort/scope, guarded switching, rename, and deletion; disk tree projection, filters/search, labels, and guarded navigation through an atomic local rewrite plus the menu resume flow. Browsing and labels need no live process; switching/navigation do. TRAMP non-atomicity and independent-writer races are documented constraints |
 | `pilish-grammars.el` | Tree-sitter grammar recipes, install prompts, `M-x pilish-install-grammars` |
@@ -81,7 +80,7 @@ latch on delayed agent/compaction starts.
 | `test/pilish-ui-test.el` | Buffer naming/modes, session directories, direct browser key bindings, startup header, slash dispatch, and grammar install |
 | `test/pilish-render-test.el` | Streaming/history response display, branch summaries, tools, tables, file actions, fontification, and diffs |
 | `test/pilish-table-test.el` | Table decoration, overlays, streaming, resize |
-| `test/pilish-input-test.el` | History, send/abort, queuing, Company/fuzzy completion, and local `/resume` browser routing |
+| `test/pilish-input-test.el` | History, send/abort, queuing, CAPF/fuzzy completion, and local `/resume` browser routing |
 | `test/pilish-menu-test.el` | Session transitions and cwd guards, canonical jsonl name metadata, transient browser entries, model/command actions, and reconnect |
 | `test/pilish-browse-test.el` | Session/tree helpers, magit rendering and point restoration; asynchronous disk scans, cancellation/error states, search/filter/sort/scope, switch guards, rename, and deletion; disk tree loading, labels, and navigation guards/targets, atomic rewrite failures, prefill, and settle/quit behavior |
 | `test/pilish-jsonl-test.el` | JSONL reading, canonical session metadata, raw tree/projection and golden fixtures, tool-call formatting, session discovery, navigation targets, and byte-preserving line reordering across branches/malformed input |
@@ -242,8 +241,8 @@ make check             # byte-compile + lint + all tests (= pre-commit hook)
 ## Dependencies
 
 `make test` auto-installs Emacs package deps (`transient`, `magit-section`,
-`md-ts-mode`, `company`) on first run and caches via `.deps-stamp`. To force
-reinstall: `make clean` then `make test`.
+`md-ts-mode`) on first run and caches via `.deps-stamp`. To force reinstall:
+`make clean` then `make test`.
 
 ## Pre-commit Hook
 

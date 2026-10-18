@@ -3285,13 +3285,12 @@ only offer our own capfs (slash commands, file references, paths)."
     (insert "/compact ")
     (should-not (pilish--slash-argument-trigger-p))))
 
-(ert-deftest pilish-test-input-mode-enables-company-with-fuzzy-matching ()
-  "Input mode enables Company with fuzzy matching over Pilish candidates."
+(ert-deftest pilish-test-input-mode-uses-standard-fuzzy-completion ()
+  "Input mode uses CAPF and Emacs flex matching without a required front end."
   (with-temp-buffer
     (pilish-input-mode)
-    (should (bound-and-true-p company-mode))
-    (should (equal company-backends '(company-capf)))
     (should (equal completion-styles '(flex)))
+    (should (memq #'pilish--command-capf completion-at-point-functions))
     (insert "/cpt")
     (let* ((capf (pilish--command-capf))
            (candidates (completion-all-completions
@@ -3300,12 +3299,18 @@ only offer our own capfs (slash commands, file references, paths)."
                       (mapcar #'substring-no-properties candidates))))))
 
 (ert-deftest pilish-test-in-buffer-completion-front-end-detection ()
-  "Front-end detection is nil after disabling Company and without Corfu."
+  "Only a buffer-local completion-in-region front end triggers inline UI."
   (with-temp-buffer
     (pilish-input-mode)
-    (company-mode -1)
     (should-not (pilish--in-buffer-completion-active-p))
-    (should-not (pilish--run-in-buffer-completion))))
+    (should-not (pilish--run-in-buffer-completion))
+    (setq-local completion-in-region-function (lambda (&rest _args) nil))
+    (should (pilish--in-buffer-completion-active-p))
+    (let ((called nil))
+      (cl-letf (((symbol-function 'completion-at-point)
+                 (lambda () (setq called t))))
+        (should (pilish--run-in-buffer-completion))
+        (should called)))))
 
 (ert-deftest pilish-test-send-prompt-sends-literal ()
   "pilish--send-prompt sends text literally (no expansion).

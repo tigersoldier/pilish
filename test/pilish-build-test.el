@@ -18,8 +18,7 @@
   (should (equal '((transient . (0 9 0))
                    (magit-section . (4 0 0))
                    (md-ts-mode . (0 4 0))
-                   (markdown-table-wrap . (0 2 0))
-                   (company . (0 9 0)))
+                   (markdown-table-wrap . (0 2 0)))
                  (pilish-build-package-requirements))))
 
 (ert-deftest pilish-test-build-package-requirements-fallback-without-lm-package-requires ()
