@@ -581,12 +581,14 @@ separately."
            (commands (mapcar (lambda (entry) (plist-get entry :name))
                              entries)))
       (unless (string-match-p "[ \t]" prefix)
-        (list start (point) commands
-              :exclusive 'no
-              :annotation-function
-              (lambda (candidate)
-                (pilish--command-annotation-string
-                 (pilish--slash-command-entry candidate entries))))))))
+        (append
+         (list start (point) commands :exclusive 'no)
+         (when pilish-command-annotations-enabled
+           (list
+            :annotation-function
+            (lambda (candidate)
+              (pilish--command-annotation-string
+               (pilish--slash-command-entry candidate entries))))))))))
 
 ;;;; Editor Features: File Reference (@)
 

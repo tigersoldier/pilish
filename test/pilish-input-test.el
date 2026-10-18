@@ -3166,9 +3166,10 @@ only offer our own capfs (slash commands, file references, paths)."
       (should (= (length (seq-filter (lambda (n) (equal n "compact")) names)) 1)))))
 
 (ert-deftest pilish-test-command-capf-annotates-candidates ()
-  "Command candidates carry descriptions and parameter hints."
+  "Command candidates carry descriptions and parameter hints by default."
   (with-temp-buffer
     (pilish-input-mode)
+    (should pilish-command-annotations-enabled)
     (setq pilish--commands
           '((:name "fix-tests" :description "Fix the failing tests" :source "prompt")))
     (insert "/mo")
@@ -3179,6 +3180,17 @@ only offer our own capfs (slash commands, file references, paths)."
                               (funcall annotate "model")))
       (should (string-match-p "Fix the failing tests" (funcall annotate "fix-tests")))
       (should-not (funcall annotate "no-such-command")))))
+
+(ert-deftest pilish-test-command-capf-annotations-can-be-disabled ()
+  "Disabling command annotations keeps candidates but hides metadata."
+  (with-temp-buffer
+    (pilish-input-mode)
+    (insert "/mo")
+    (let ((pilish-command-annotations-enabled nil))
+      (let ((result (pilish--command-capf)))
+        (should (member "model" (nth 2 result)))
+        (should-not (plist-member (nthcdr 3 result)
+                                  :annotation-function))))))
 
 (ert-deftest pilish-test-command-capf-preserves-rpc-argument-hint ()
   "RPC command entries display an advertised argument hint."

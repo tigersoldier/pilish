@@ -263,6 +263,12 @@ Takes effect for new sessions; existing input buffers keep their mode."
   :type 'boolean
   :group 'pilish)
 
+(defcustom pilish-command-annotations-enabled t
+  "Whether slash-command completion displays descriptions and argument hints.
+When nil, candidates are still completed, but their annotations are hidden."
+  :type 'boolean
+  :group 'pilish)
+
 (defcustom pilish-copy-raw-markdown nil
   "Whether to copy raw markdown from the chat buffer.
 When non-nil, copy commands (`kill-ring-save', `kill-region') preserve
