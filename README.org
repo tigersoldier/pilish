@@ -254,9 +254,13 @@ Slash commands work with completion: type =/= then =TAB= to complete
 built-in commands and Pi commands such as prompt templates, skills,
 and extension commands.  Candidates show their descriptions and any
 known argument hints by default; set
-=pilish-command-annotations-enabled= to nil to hide them.  The CAPF
-works with in-buffer front-ends such as =company-mode= and =corfu= as
-well as Emacs's built-in completion.
+=pilish-command-annotations-enabled= to nil to hide them.  Known command
+arguments complete too: after =/model =, the running session's model
+labels are available, and completing/sending one selects that model.
+Extend =pilish-command-argument-completions= with functions of your own
+for custom commands; each receives the argument prefix and returns
+candidate strings.  The CAPF works with in-buffer front-ends such as
+=company-mode= and =corfu= as well as Emacs's built-in completion.
 Prompt templates are discovered from places such as
 =~/.pi/agent/prompts/=, and skills from =~/.agents/skills/=.  File
 references also complete: use =TAB= on paths such as =./=, =../=, and
@@ -575,7 +579,7 @@ The main buffers:
 | =C-u C-c C-p a i=         | menu         | Clear the attached prompt image             |
 | =M-p= / =M-n=             | input        | Prompt history (=C-↑= / =C-↓= also work)    |
 | =C-r=                     | input        | Incremental prompt-history search           |
-| =TAB=                     | input        | Complete paths and =/= commands             |
+| =TAB=                     | input        | Complete =/= commands/arguments and paths    |
 | =M-<prior>= / =M-<next>=  | input        | Scroll the linked chat window               |
 | =TAB=                     | chat         | Toggle summary line, thinking, tool, or turn |
 | =RET=                     | chat         | Visit file target at point                  |
