@@ -263,6 +263,12 @@ Takes effect for new sessions; existing input buffers keep their mode."
   :type 'boolean
   :group 'pilish)
 
+(defcustom pilish-command-annotations-enabled t
+  "Whether slash-command completion displays descriptions and argument hints.
+When nil, candidates are still completed, but their annotations are hidden."
+  :type 'boolean
+  :group 'pilish)
+
 (defcustom pilish-copy-raw-markdown nil
   "Whether to copy raw markdown from the chat buffer.
 When non-nil, copy commands (`kill-ring-save', `kill-region') preserve
@@ -1790,26 +1796,40 @@ Optional :location (\"user\" or \"project\") and :path may be present.
 Source is \"prompt\", \"extension\", or \"skill\".")
 
 (defvar pilish--builtin-commands
-  '(("compact" :handler pilish-compact       :args optional)
-    ("new"     :handler pilish-new-session)
-    ("model"   :handler pilish-select-model  :args optional)
-    ("session" :handler pilish-session-stats)
-    ("name"    :handler pilish-set-session-name :args required)
-    ("fork"    :handler pilish-fork)
-    ("resume"  :handler pilish-session-browser)
-    ("reload"  :handler pilish-reload)
-    ("export"  :handler pilish-export-html  :args optional)
-    ("copy"    :handler pilish-copy-last-message)
-    ("quit"    :handler pilish-quit))
+  '(("compact" :handler pilish-compact :args optional
+     :description "Compact the conversation context")
+    ("new"     :handler pilish-new-session
+     :description "Start a new session")
+    ("model"   :handler pilish-select-model :args optional
+     :description "Select the active model"
+     :argument-hint "model-name [provider]")
+    ("session" :handler pilish-session-stats
+     :description "Show session info and stats")
+    ("name"    :handler pilish-set-session-name :args required
+     :description "Set the session name"
+     :argument-hint "name")
+    ("fork"    :handler pilish-fork
+     :description "Fork the session from a previous message")
+    ("resume"  :handler pilish-session-browser
+     :description "Resume a different session")
+    ("reload"  :handler pilish-reload
+     :description "Reload prompts, skills, extensions and settings")
+    ("export"  :handler pilish-export-html :args optional
+     :description "Export the session transcript"
+     :argument-hint "path")
+    ("copy"    :handler pilish-copy-last-message
+     :description "Copy the last assistant message")
+    ("quit"    :handler pilish-quit
+     :description "Quit the session"))
   "Built-in slash commands dispatched client-side.
-Each entry is (NAME . PLIST) where PLIST has:
-  :handler  Function to call (symbol)
-  :args     nil (no args), `optional', or `required'
+Each command entry contains a name and a property list with :handler,
+:args, :description, and optional :argument-hint metadata.  `:args' is nil
+\\(no args\\), `optional', or `required'.  Descriptions and hints are shown
+by slash-command completion.
 
 Commands with :args `optional' pass the trailing text (or nil) to the
 handler.  Commands with :args `required' prompt interactively when no
-argument is given (the handler's `interactive' spec handles this).
-Descriptions come from the handler's docstring.")
+argument is given (the handler's `interactive' spec handles this).")
 
 (defun pilish--builtin-command-name (text)
   "Return the built-in slash command name in TEXT, or nil."

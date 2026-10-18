@@ -3165,6 +3165,58 @@ only offer our own capfs (slash commands, file references, paths)."
       ;; No duplicates
       (should (= (length (seq-filter (lambda (n) (equal n "compact")) names)) 1)))))
 
+(ert-deftest pilish-test-command-capf-annotates-candidates ()
+  "Command candidates carry descriptions and parameter hints by default."
+  (with-temp-buffer
+    (pilish-input-mode)
+    (should pilish-command-annotations-enabled)
+    (setq pilish--commands
+          '((:name "fix-tests" :description "Fix the failing tests" :source "prompt")))
+    (insert "/mo")
+    (let* ((result (pilish--command-capf))
+           (annotate (plist-get (cdddr result) :annotation-function)))
+      (should (string-match-p "Select the active model" (funcall annotate "model")))
+      (should (string-match-p (regexp-quote "<model-name [provider]>")
+                              (funcall annotate "model")))
+      (should (string-match-p "Fix the failing tests" (funcall annotate "fix-tests")))
+      (should-not (funcall annotate "no-such-command")))))
+
+(ert-deftest pilish-test-command-capf-annotations-can-be-disabled ()
+  "Disabling command annotations keeps candidates but hides metadata."
+  (with-temp-buffer
+    (pilish-input-mode)
+    (insert "/mo")
+    (let ((pilish-command-annotations-enabled nil))
+      (let ((result (pilish--command-capf)))
+        (should (member "model" (nth 2 result)))
+        (should-not (plist-member (nthcdr 3 result)
+                                  :annotation-function))))))
+
+(ert-deftest pilish-test-command-capf-preserves-rpc-argument-hint ()
+  "RPC command entries display an advertised argument hint."
+  (with-temp-buffer
+    (pilish-input-mode)
+    (setq pilish--commands
+          '((:name "tpl" :description "Run a template" :argument-hint "<file>")))
+    (insert "/tp")
+    (let* ((result (pilish--command-capf))
+           (annotate (plist-get (cdddr result) :annotation-function)))
+      (should (string-match-p (regexp-quote "<file>")
+                              (funcall annotate "tpl"))))))
+
+(ert-deftest pilish-test-command-capf-builtin-shadows-rpc ()
+  "A same-named RPC command does not replace the built-in entry."
+  (with-temp-buffer
+    (pilish-input-mode)
+    (setq pilish--commands
+          '((:name "model" :description "RPC shadow")
+            (:name "other" :description "Real RPC command")))
+    (insert "/mo")
+    (let* ((result (pilish--command-capf))
+           (annotate (plist-get (cdddr result) :annotation-function)))
+      (should (string-match-p "Select the active model" (funcall annotate "model")))
+      (should (member "other" (nth 2 result))))))
+
 (ert-deftest pilish-test-send-prompt-sends-literal ()
   "pilish--send-prompt sends text literally (no expansion).
 Pi handles command expansion on the server side."

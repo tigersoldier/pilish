@@ -252,12 +252,16 @@ under =Images= in Advanced.
 
 Slash commands work with completion: type =/= then =TAB= to complete
 built-in commands and Pi commands such as prompt templates, skills,
-and extension commands.  Prompt templates are discovered from places
-such as =~/.pi/agent/prompts/=, and skills from
-=~/.agents/skills/=.  File references also complete: use =TAB= on
-paths such as =./=, =../=, and =~/=.  Absolute paths complete too,
-except for a bare =/= at the start of the buffer, where slash-command
-completion wins.
+and extension commands.  Candidates show their descriptions and any
+known argument hints by default; set
+=pilish-command-annotations-enabled= to nil to hide them.  The CAPF
+works with in-buffer front-ends such as =company-mode= and =corfu= as
+well as Emacs's built-in completion.
+Prompt templates are discovered from places such as
+=~/.pi/agent/prompts/=, and skills from =~/.agents/skills/=.  File
+references also complete: use =TAB= on paths such as =./=, =../=, and
+=~/=; absolute paths complete too, except for a bare =/= at buffer
+start, where slash-command completion wins.
 
 While composing, you can page through the chat without leaving the
 input buffer.  Emacs's built-in =M-<prior>= and =M-<next>=

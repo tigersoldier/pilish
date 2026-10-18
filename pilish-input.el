@@ -513,19 +513,82 @@ cancels, the session remains intact."
 
 ;;;; Slash Command Completion
 
+(defun pilish--slash-command-context-p ()
+  "Return non-nil when point is inside a slash command on the first line.
+Pi expands slash commands only when the whole input starts with \"/\", so
+completion is restricted to the first line of the buffer."
+  (and (> (point) (point-min))
+       (eq (char-after (point-min)) ?/)
+       (= (line-beginning-position) (point-min))
+       (<= (point) (line-end-position))))
+
+(defun pilish--slash-command-entries ()
+  "Return slash-command completion entries for the current session.
+Entries may carry :description, :argument-hint, and :source.  Built-in
+entries shadow same-named RPC commands so completion follows dispatch."
+  (append
+   (mapcar (lambda (builtin)
+             (let* ((name (car builtin))
+                    (props (cdr builtin))
+                    (entry (list :name name :kind 'builtin)))
+               (when-let* ((description (plist-get props :description)))
+                 (plist-put entry :description description))
+               (when-let* ((hint (plist-get props :argument-hint)))
+                 (plist-put entry :argument-hint hint))
+               entry))
+           pilish--builtin-commands)
+   (delq nil
+         (mapcar (lambda (command)
+                   (when-let* ((name (plist-get command :name)))
+                     (unless (assoc name pilish--builtin-commands)
+                       (let ((entry (list :name name :kind 'rpc)))
+                         (when-let* ((description (plist-get command :description)))
+                           (plist-put entry :description description))
+                         (when-let* ((source (plist-get command :source)))
+                           (plist-put entry :source source))
+                         (when-let* ((hint (or (plist-get command :argumentHint)
+                                               (plist-get command :argument-hint))))
+                           (plist-put entry :argument-hint hint))
+                         entry))))
+                 pilish--commands))))
+
+(defun pilish--slash-command-entry (name entries)
+  "Return the completion entry for slash command NAME in ENTRIES, or nil."
+  (cl-find name entries :key (lambda (entry) (plist-get entry :name))
+           :test #'equal))
+
+(defun pilish--command-annotation-string (entry)
+  "Return completion annotation text for slash-command ENTRY, or nil.
+Shows its description and any argument placeholder hint."
+  (when entry
+    (let* ((description (plist-get entry :description))
+           (hint (when-let* ((h (plist-get entry :argument-hint)))
+                   (format "<%s>"
+                           (replace-regexp-in-string "\\`<\\|>\\'" "" h))))
+           (parts (delq nil (list description hint))))
+      (and parts (concat " " (mapconcat #'identity parts "  "))))))
+
 (defun pilish--command-capf ()
-  "Completion-at-point function for /commands in input buffer.
-Returns completion data when point is after / at start of buffer.
-Includes both built-in commands and commands from pi's `get_commands' RPC."
-  (when (and (eq (char-after (point-min)) ?/)
-             (not (bobp)))
+  "Completion-at-point function for slash-command names.
+Candidates include built-in commands and pi's `get_commands' RPC
+commands, annotated with descriptions and argument hints.  Argument
+values are completed by the argument-completion extension added
+separately."
+  (when (pilish--slash-command-context-p)
     (let* ((start (1+ (point-min)))
-           (end (point))
-           (builtin-names (mapcar #'car pilish--builtin-commands))
-           (rpc-names (mapcar (lambda (cmd) (plist-get cmd :name))
-                              pilish--commands))
-           (commands (delete-dups (append builtin-names rpc-names))))
-      (list start end commands :exclusive 'no))))
+           (prefix (buffer-substring start (point)))
+           (entries (pilish--slash-command-entries))
+           (commands (mapcar (lambda (entry) (plist-get entry :name))
+                             entries)))
+      (unless (string-match-p "[ \t]" prefix)
+        (append
+         (list start (point) commands :exclusive 'no)
+         (when pilish-command-annotations-enabled
+           (list
+            :annotation-function
+            (lambda (candidate)
+              (pilish--command-annotation-string
+               (pilish--slash-command-entry candidate entries))))))))))
 
 ;;;; Editor Features: File Reference (@)
 
