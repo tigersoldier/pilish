@@ -253,13 +253,13 @@ under =Images= in Advanced.
 Slash commands complete in the input buffer: type =/= then =TAB= to
 complete built-in commands and Pi commands such as prompt templates,
 skills, and extension commands.  Candidates show descriptions and
-argument hints.  The input buffer uses Emacs's =flex= completion style
-for fuzzy matching and the standard completion-at-point interface, so it
-remains compatible with different in-buffer front ends.  When a front end
-is active, suggestions can appear inline as you type, including after
-=/= and after the space for a command with known argument values.  Without
-an in-buffer front end, =TAB= continues to use Emacs completion; =@= file
-references keep their minibuffer fallback.
+argument hints.  The package uses Emacs's standard
+completion-at-point interface and leaves matching and presentation to
+Emacs or the configured in-buffer front end.  When a front end is active,
+suggestions can appear inline as you type, including after =/= and after
+the space for a command with known argument values.  Without an in-buffer
+front end, =TAB= continues to use Emacs completion; =@= file references
+keep their minibuffer fallback.
 
 Known command arguments complete too: after =/model =, the running
 session's model labels are available, and completing/sending one selects

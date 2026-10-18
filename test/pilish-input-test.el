@@ -3285,18 +3285,17 @@ only offer our own capfs (slash commands, file references, paths)."
     (insert "/compact ")
     (should-not (pilish--slash-argument-trigger-p))))
 
-(ert-deftest pilish-test-input-mode-uses-standard-fuzzy-completion ()
-  "Input mode uses CAPF and Emacs flex matching without a required front end."
-  (with-temp-buffer
-    (pilish-input-mode)
-    (should (equal completion-styles '(flex)))
-    (should (memq #'pilish--command-capf completion-at-point-functions))
-    (insert "/cpt")
-    (let* ((capf (pilish--command-capf))
-           (candidates (completion-all-completions
-                        "cpt" (nth 2 capf) nil 3)))
-      (should (member "compact"
-                      (mapcar #'substring-no-properties candidates))))))
+(ert-deftest pilish-test-input-mode-registers-standard-completion ()
+  "Input mode exposes its CAPF without overriding Emacs's matching style."
+  (let ((completion-styles '(basic)))
+    (with-temp-buffer
+      (pilish-input-mode)
+      (should (equal completion-styles '(basic)))
+      (should (memq #'pilish--command-capf completion-at-point-functions))
+      (insert "/com")
+      (let ((capf (pilish--command-capf)))
+        (should (member "compact" (nth 2 capf)))
+        (should (equal (try-completion "com" (nth 2 capf)) "compact"))))))
 
 (ert-deftest pilish-test-in-buffer-completion-front-end-detection ()
   "Only a buffer-local completion-in-region front end triggers inline UI."

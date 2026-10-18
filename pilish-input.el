@@ -28,7 +28,7 @@
 ;; Input buffer features for Pilish: prompt composition,
 ;; history navigation (comint/eshell-style M-p/M-n), incremental
 ;; history search (readline-style C-r), file reference completion (@),
-;; path completion (Tab), slash-command and argument completion, and fuzzy
+;; path completion (Tab), slash-command and argument completion, and
 ;; in-buffer completion through Emacs's standard completion interface,
 ;; message queuing (follow-up and steering), and send/abort commands.
 ;;
@@ -262,9 +262,6 @@ markup visibility, mode identity, and keybindings.  Set
   (add-hook 'completion-at-point-functions #'pilish--command-capf nil t)
   (add-hook 'completion-at-point-functions #'pilish--file-reference-capf nil t)
   (add-hook 'completion-at-point-functions #'pilish--path-capf nil t)
-  ;; Keep completion front-end agnostic; Emacs's flex style allows fuzzy
-  ;; subsequence matches for commands, files, and paths.
-  (setq-local completion-styles '(flex))
   (add-hook 'post-self-insert-hook #'pilish--maybe-complete-at nil t)
   (add-hook 'isearch-mode-hook #'pilish--history-isearch-setup nil t)
   (add-hook 'kill-buffer-query-functions

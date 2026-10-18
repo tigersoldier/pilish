@@ -80,7 +80,7 @@ latch on delayed agent/compaction starts.
 | `test/pilish-ui-test.el` | Buffer naming/modes, session directories, direct browser key bindings, startup header, slash dispatch, and grammar install |
 | `test/pilish-render-test.el` | Streaming/history response display, branch summaries, tools, tables, file actions, fontification, and diffs |
 | `test/pilish-table-test.el` | Table decoration, overlays, streaming, resize |
-| `test/pilish-input-test.el` | History, send/abort, queuing, CAPF/fuzzy completion, and local `/resume` browser routing |
+| `test/pilish-input-test.el` | History, send/abort, queuing, CAPF completion, and local `/resume` browser routing |
 | `test/pilish-menu-test.el` | Session transitions and cwd guards, canonical jsonl name metadata, transient browser entries, model/command actions, and reconnect |
 | `test/pilish-browse-test.el` | Session/tree helpers, magit rendering and point restoration; asynchronous disk scans, cancellation/error states, search/filter/sort/scope, switch guards, rename, and deletion; disk tree loading, labels, and navigation guards/targets, atomic rewrite failures, prefill, and settle/quit behavior |
 | `test/pilish-jsonl-test.el` | JSONL reading, canonical session metadata, raw tree/projection and golden fixtures, tool-call formatting, session discovery, navigation targets, and byte-preserving line reordering across branches/malformed input |
