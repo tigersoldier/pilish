@@ -5808,6 +5808,156 @@ replay output without it, byte for byte."
   "When the whole buffer is shorter than the window, preserve the highest visible row."
   (should (= 5 (pilish--clamp-rewrite-point-row 10 5 8 20))))
 
+(ert-deftest pilish-test-window-start-fills-window-bounds-screen-scan ()
+  "The viewport fill check walks only as many screen lines as it needs."
+  (with-temp-buffer
+    (let ((results '(23 10))
+          requested)
+      (cl-letf (((symbol-function 'count-screen-lines)
+                 (lambda (&rest _)
+                   (error "Unbounded screen-line counting is not allowed")))
+                ((symbol-function 'vertical-motion)
+                 (lambda (lines _window)
+                   (push lines requested)
+                   (pop results))))
+        (should (pilish--window-start-fills-window-p
+                 (point-min) 24 'test-window))
+        (should-not (pilish--window-start-fills-window-p
+                     (point-min) 24 'test-window)))
+      (should (equal (nreverse requested) '(23 23))))))
+
+(ert-deftest pilish-test-window-start-fills-window-matches-wrapped-tail ()
+  "The bounded fill probe agrees with visible screen-line counts."
+  (let ((buffer (generate-new-buffer " *pilish-fill-probe*")))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (switch-to-buffer buffer)
+          (let ((window (selected-window)))
+            (with-current-buffer buffer
+              (dotimes (i 80)
+                (insert (format "%03d %s\n" i (make-string 120 ?x))))
+              (let ((height (window-body-height window)))
+                (dolist (line '(0 10 30 60 79))
+                  (goto-char (point-min))
+                  (forward-line line)
+                  (let* ((start (point))
+                         (_ (set-window-start window start t))
+                         (reference
+                          (>= (count-screen-lines start (point-max) nil window)
+                              (1- height))))
+                    (should (eq (not (null reference))
+                                (not (null
+                                      (pilish--window-start-fills-window-p
+                                       start height window)))))))))))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer)))))
+
+(ert-deftest pilish-test-bounded-tail-screen-lines-matches-count-screen-lines ()
+  "The capped tail count preserves newline and wrapping semantics."
+  (let ((buffer (generate-new-buffer " *pilish-tail-probe*")))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (switch-to-buffer buffer)
+          (let ((window (selected-window)))
+            (with-current-buffer buffer
+              (dolist (text '("a\nb" "a\nb\n"
+                              "abcdef" "abcdef\n"
+                              "a long wrapped line that should occupy multiple rows in a window\n"
+                              "one\ntwo\nthree\nfour\nfive\n"))
+                (erase-buffer)
+                (insert text)
+                (let ((height (window-body-height window)))
+                  (dolist (start (delete-dups
+                                  (list (point-min)
+                                        (min (point-max) (1+ (point-min)))
+                                        (max (point-min) (- (point-max) 2)))))
+                    (let ((reference
+                           (min height
+                                (max 1 (count-screen-lines
+                                        start (point-max) nil window)))))
+                      (should (= reference
+                                 (pilish--bounded-tail-screen-lines
+                                  start height window))))))))))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer)))))
+
+(ert-deftest pilish-test-capture-window-rewrite-state-bounds-offscreen-point ()
+  "An offscreen window point does not trigger a transcript-length row scan."
+  (let ((buffer (generate-new-buffer " *pilish-offscreen-capture*")))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (switch-to-buffer buffer)
+          (with-current-buffer buffer
+            (dotimes (i 100)
+              (insert (format "line %03d\n" i))))
+          (let* ((window (selected-window))
+                 (body-height (window-body-height window))
+                 (start (point-min))
+                 (end (save-excursion
+                        (goto-char (point-min))
+                        (forward-line 5)
+                        (point)))
+                 (point (save-excursion
+                          (goto-char (point-min))
+                          (forward-line 90)
+                          (point))))
+            (set-window-start window start t)
+            (set-window-point window point)
+            (with-current-buffer buffer
+              (cl-letf (((symbol-function 'window-end)
+                         (lambda (_window &optional _update) end))
+                        ((symbol-function 'count-screen-lines)
+                         (lambda (&rest _)
+                           (error "Offscreen row measurement must be bounded"))))
+                (let ((state (pilish--capture-window-rewrite-state
+                              window (point-max))))
+                  (should (= (plist-get state :row) body-height))
+                  (should-not (plist-get state :tail-p)))))))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer)))))
+
+(ert-deftest pilish-test-restore-window-rewrite-fallback-preserves-visible-tail ()
+  "A shortened non-tail view keeps its point visible and fills to the tail."
+  (let ((buffer (generate-new-buffer " *pilish-short-tail-restore*")))
+    (unwind-protect
+        (save-window-excursion
+          (delete-other-windows)
+          (switch-to-buffer buffer)
+          (with-current-buffer buffer
+            (pilish-chat-mode)
+            (let ((inhibit-read-only t))
+              (dotimes (i 100)
+                (insert (format "line %03d\n" i)))))
+          (let* ((window (selected-window))
+                 (body-height (window-body-height window))
+                 saved-start saved-point state)
+            (with-current-buffer buffer
+              (goto-char (point-min))
+              (forward-line 30)
+              (setq saved-start (point))
+              (set-window-start window saved-start t)
+              (forward-line 5)
+              (setq saved-point (point))
+              (set-window-point window saved-point)
+              (setq state (pilish--capture-window-rewrite-state
+                           window (point-max)))
+              (should-not (plist-get state :tail-p))
+              (let ((inhibit-read-only t))
+                (goto-char (point-min))
+                (forward-line 50)
+                (delete-region (point) (point-max)))
+              (pilish--restore-window-rewrite-state state)
+              (should (= (window-point window) saved-point))
+              (should (< (window-start window) saved-start))
+              (should (pilish-test--window-shows-tail-p window))
+              (should (pilish-test--window-mostly-filled-p window))
+              (should (<= (window-start window) (window-point window))))))
+      (when (buffer-live-p buffer)
+        (kill-buffer buffer)))))
+
 ;;; Pandoc Conversion
 
 (ert-deftest pilish-test-message-start-marker-created ()
