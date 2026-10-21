@@ -8391,14 +8391,15 @@ provided, or clamp it into the rewritten buffer."
        map-position
        (min (plist-get window-state :point) (point-max)))))
 
-(defun pilish--window-start-fills-window-p
-    (start point-max body-height window)
+(defun pilish--window-start-fills-window-p (start body-height window)
   "Return non-nil when START still fills WINDOW after a rewrite.
-A filled view leaves at most one blank row in BODY-HEIGHT after POINT-MAX.
-Preserving the user's viewport is better than scrolling to command point when
-the old start remains useful."
-  (>= (count-screen-lines start point-max nil window)
-      (1- body-height)))
+Probe at most BODY-HEIGHT minus one visible screen lines, rather than counting
+the entire transcript tail."
+  (let ((required-lines (max 0 (1- body-height))))
+    (save-excursion
+      (goto-char start)
+      (>= (vertical-motion required-lines window)
+          required-lines))))
 
 (defun pilish--restore-window-rewrite-state
     (window-state &optional map-position)
@@ -8427,18 +8428,32 @@ nil for positions deleted by the rewrite."
                      map-position
                      point)))
               (if (pilish--window-start-fills-window-p
-                   saved-start point-max body-height win)
+                   saved-start body-height win)
                   (progn
                     (set-window-start win saved-start t)
                     (set-window-point win (max point saved-start)))
-                (let* ((above-lines (count-screen-lines (point-min) point nil win))
-                       (tail-lines (max 1 (count-screen-lines point point-max nil win)))
+                (let* ((above-limit (max 0 (1- body-height)))
+                       (above-lines
+                        (save-excursion
+                          (goto-char point)
+                          (abs (vertical-motion (- above-limit) win))))
+                       (tail-lines
+                        (max 1
+                             (save-excursion
+                               (goto-char point)
+                               (abs (vertical-motion body-height win)))))
                        (row (pilish--clamp-rewrite-point-row
                              (plist-get window-state :row)
                              above-lines
                              tail-lines
-                             body-height)))
-                  (recenter row))))))))))
+                             body-height))
+                       (new-start
+                        (save-excursion
+                          (goto-char point)
+                          (vertical-motion (- row) win)
+                          (point))))
+                  (set-window-start win new-start t)
+                  (set-window-point win point))))))))))
 
 (defun pilish--restore-window-rewrite-states
     (buffer window-states &optional map-position)

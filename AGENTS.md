@@ -115,6 +115,8 @@ latch on delayed agent/compaction starts.
 | `bench/pilish-stream-delta-bench.el` | Synthetic history plus coalesced text/thinking/toolcall stream benchmark harness |
 | `bench/fake-pi-stream-delta.py` | Fake JSON-over-stdio backend for deterministic stream bursts and backlog |
 | `bench/run-stream-delta-bench.sh` | Stream-delta benchmark runner; GUI uses `xvfb-run`, `--batch` for headless lane |
+| `bench/pilish-window-rewrite-bench.el` | Synthetic Markdown transcript and legacy/current viewport-restore A/B harness |
+| `bench/run-window-rewrite-bench.sh` | Window-rewrite benchmark runner; GUI uses `xvfb-run`, `--batch` for headless lane |
 | `bench/fixtures/tables.md` | Sample pipe tables used by the table benchmark |
 | `test/support/fake_pi.py` | Deterministic JSONL RPC subprocess double with scenario-driven events, valid v3 persistence, inspection RPCs, and transactional session switching |
 | `test/support/fake-pi-contract.md` | Maintainer-facing wire, scenario/event/tool, v3 record, projection, and switch contract for `fake_pi.py` |
@@ -200,6 +202,9 @@ make bench-stream-delta-smoke      # cheap stream-delta correctness smoke
 make bench-agent-end-cooling       # deferred agent_end cooling GUI lane (primary)
 make bench-agent-end-cooling-batch # deferred cooling batch lane (secondary)
 make bench-agent-end-cooling-smoke # cheap deferred cooling correctness smoke
+make bench-window-rewrite          # legacy/current viewport restoration A/B (GUI via xvfb)
+make bench-window-rewrite-batch    # A/B benchmark in batch mode (secondary lane)
+make bench-window-rewrite-smoke    # cheap A/B correctness smoke (batch)
 ```
 
 The GUI lanes are the primary measurements; batch lanes are quick sanity
@@ -220,12 +225,19 @@ heartbeats without enforcing timing thresholds.  Its runner deliberately uses
 `-Q`: slice/root timings are structural diagnostics, zero root calls is valid,
 and these results must not be cited as evidence that md-ts root cost was
 reduced.
-Table fixtures live in `bench/fixtures/tables.md`.  Reload/resume artifacts are
+
+The window-rewrite A/B benchmark compares the pre-change whole-range restore
+with production code on middle and short-tail views of a synthetic Markdown
+transcript; each variant runs in a fresh Emacs process. GUI results are primary
+for JIT/font metrics; batch results are secondary.
+
+Table fixtures live in `bench/fixtures/tables.md`. Reload/resume artifacts are
 written under `tmp/reload-resume-bench/`, tool-update artifacts under
 `tmp/tool-update-bench/`, stream-delta artifacts under
-`tmp/stream-delta-bench/{gui,batch,smoke}/`, and agent-end-cooling artifacts
-under `tmp/agent-end-cooling-bench/{gui,batch,smoke}/` by default.  Runners
-select lane directories when no `--out-dir` is given; dedicated smoke targets write
+`tmp/stream-delta-bench/{gui,batch,smoke}/`, agent-end-cooling artifacts under
+`tmp/agent-end-cooling-bench/{gui,batch,smoke}/`, and window-rewrite artifacts
+under `tmp/window-rewrite-bench/{gui,batch,smoke}/` by default. Runners select
+lane directories when no `--out-dir` is given; dedicated smoke targets write
 under `smoke/`, so public lanes do not overwrite one another.
 
 ## Linting
