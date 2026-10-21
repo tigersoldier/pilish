@@ -345,7 +345,7 @@ bench-agent-end-cooling-smoke: .deps-stamp
 	@./bench/run-tool-update-bench.sh --batch --scenario agent-end-cooling-smoke -c 1 \
 		--out-dir tmp/agent-end-cooling-bench/smoke
 
-# Compare the legacy whole-transcript scans with bounded window restoration.
+# Compare full-range screen-line scans with bounded window restoration.
 bench-window-rewrite: .deps-stamp
 	@./bench/run-window-rewrite-bench.sh
 

@@ -8327,9 +8327,9 @@ clamp the row so the tail still fills the window after the rewrite."
         start))))
 
 (defun pilish--capture-window-rewrite-state (window point-max)
-  "Return saved WINDOW state before a buffer rewrite.
-POINT-MAX is the old buffer end before the rewrite begins.  ROW is measured
-only within WINDOW's visible range; offscreen points are clamped to its edges."
+  "Return a viewport snapshot for WINDOW.
+POINT-MAX is the buffer end at capture time.  ROW is measured only within
+WINDOW's visible range; offscreen points are clamped to its edges."
   (let* ((point (window-point window))
          (body-height (max 1 (window-body-height window)))
          (start (window-start window))
@@ -8391,9 +8391,9 @@ provided, or clamp it into the rewritten buffer."
        (min (plist-get window-state :point) (point-max)))))
 
 (defun pilish--window-start-fills-window-p (start body-height window)
-  "Return non-nil when START still fills WINDOW after a rewrite.
+  "Return non-nil when text after START fills most of WINDOW.
 Probe at most one fewer than BODY-HEIGHT screen lines using WINDOW's display
-layout, instead of counting the entire transcript tail."
+layout."
   (let ((required-lines (max 0 (1- body-height))))
     (save-excursion
       (goto-char start)
@@ -8476,9 +8476,9 @@ MAP-POSITION is passed to `pilish--restore-window-rewrite-state'."
 
 (defun pilish--rerender-canonical-history ()
   "Rebuild the current chat buffer from cached canonical messages.
-Visible chat windows keep useful context after the rewrite: windows already at
-or showing the tail stay at the rebuilt tail, while other windows restore point
-and approximately the same screen-line row, clamped so the window stays filled
+Visible chat windows keep useful context: windows already at or showing the
+tail stay at the rebuilt tail, while other windows restore point and
+approximately the same screen-line row, clamped so the window stays filled
 when possible."
   (let ((messages pilish--canonical-messages))
     (when (vectorp messages)

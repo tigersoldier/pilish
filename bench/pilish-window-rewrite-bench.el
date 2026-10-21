@@ -6,13 +6,12 @@
 
 ;;; Commentary:
 
-;; Compare the pre-optimization whole-transcript window restore with the
-;; current bounded implementation on a synthetic Markdown chat buffer.  Each
-;; run rewrites the whole transcript after fontifying the original viewport,
-;; then measures restoration with fresh JIT-lock state.  Each variant/case runs
-;; in a fresh Emacs process so timers do not leak between measurements.  The
-;; GUI/xvfb lane is primary; batch results are structural diagnostics only.
-;; Timing is never a pass/fail threshold.
+;; Compare full-range and bounded window restoration on a synthetic Markdown
+;; chat buffer. Each run fontifies the original viewport, rebuilds the whole
+;; transcript, then measures restoration with fresh JIT-lock state. Every
+;; algorithm/case runs in a fresh Emacs process so timers do not leak between
+;; measurements. The GUI/xvfb lane is primary; batch results are structural
+;; diagnostics only. Timing is never a pass/fail threshold.
 
 ;;; Code:
 
@@ -40,8 +39,8 @@
    (pilish-wr-bench--env name (number-to-string default))))
 
 (defvar pilish-wr-bench-variant
-  (pilish-wr-bench--env "PI_WR_BENCH_VARIANT" "after")
-  "Implementation variant measured by this process: before or after.")
+  (pilish-wr-bench--env "PI_WR_BENCH_VARIANT" "bounded")
+  "Restore algorithm measured by this process: full-range or bounded.")
 
 (defvar pilish-wr-bench-case
   (pilish-wr-bench--env "PI_WR_BENCH_CASE" "middle")
@@ -74,9 +73,9 @@
     (setq pilish-wr-bench--recorded-branch (if fills "fill" "fallback"))
     fills))
 
-(defun pilish-wr-bench--restore-before (window-state)
-  "Restore WINDOW-STATE using the pre-optimization whole-transcript scans.
-This is a frozen copy of the old restore algorithm for A/B comparison."
+(defun pilish-wr-bench--restore-full-range (window-state)
+  "Restore WINDOW-STATE using full-range screen-line counts.
+This is the benchmark reference implementation for viewport comparison."
   (let ((win (plist-get window-state :window)))
     (when (and (window-live-p win)
                (eq (window-buffer win) (current-buffer)))
@@ -164,7 +163,7 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
 
 (defun pilish-wr-bench--run-one ()
   "Prepare one synthetic session, measure restore, and write its JSON result."
-  (unless (member pilish-wr-bench-variant '("before" "after"))
+  (unless (member pilish-wr-bench-variant '("full-range" "bounded"))
     (error "Unknown benchmark variant: %s" pilish-wr-bench-variant))
   (unless (member pilish-wr-bench-case '("middle" "short-tail"))
     (error "Unknown benchmark case: %s" pilish-wr-bench-case))
@@ -229,9 +228,9 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
                       gc-before gcs-done
                       gc-time-before gc-elapsed)
                 (let ((started (float-time)))
-                  (if (equal pilish-wr-bench-variant "before")
+                  (if (equal pilish-wr-bench-variant "full-range")
                       (with-current-buffer buffer
-                        (pilish-wr-bench--restore-before state))
+                        (pilish-wr-bench--restore-full-range state))
                     (advice-add 'pilish--window-start-fills-window-p :around
                                 #'pilish-wr-bench--record-fill-decision)
                     (unwind-protect

@@ -115,7 +115,7 @@ latch on delayed agent/compaction starts.
 | `bench/pilish-stream-delta-bench.el` | Synthetic history plus coalesced text/thinking/toolcall stream benchmark harness |
 | `bench/fake-pi-stream-delta.py` | Fake JSON-over-stdio backend for deterministic stream bursts and backlog |
 | `bench/run-stream-delta-bench.sh` | Stream-delta benchmark runner; GUI uses `xvfb-run`, `--batch` for headless lane |
-| `bench/pilish-window-rewrite-bench.el` | Synthetic Markdown transcript and legacy/current viewport-restore A/B harness |
+| `bench/pilish-window-rewrite-bench.el` | Synthetic Markdown transcript and full-range/bounded viewport-restoration A/B harness |
 | `bench/run-window-rewrite-bench.sh` | Window-rewrite benchmark runner; GUI uses `xvfb-run`, `--batch` for headless lane |
 | `bench/fixtures/tables.md` | Sample pipe tables used by the table benchmark |
 | `test/support/fake_pi.py` | Deterministic JSONL RPC subprocess double with scenario-driven events, valid v3 persistence, inspection RPCs, and transactional session switching |
@@ -202,7 +202,7 @@ make bench-stream-delta-smoke      # cheap stream-delta correctness smoke
 make bench-agent-end-cooling       # deferred agent_end cooling GUI lane (primary)
 make bench-agent-end-cooling-batch # deferred cooling batch lane (secondary)
 make bench-agent-end-cooling-smoke # cheap deferred cooling correctness smoke
-make bench-window-rewrite          # legacy/current viewport restoration A/B (GUI via xvfb)
+make bench-window-rewrite          # full-range/bounded viewport restoration A/B (GUI via xvfb)
 make bench-window-rewrite-batch    # A/B benchmark in batch mode (secondary lane)
 make bench-window-rewrite-smoke    # cheap A/B correctness smoke (batch)
 ```
@@ -226,14 +226,14 @@ heartbeats without enforcing timing thresholds.  Its runner deliberately uses
 and these results must not be cited as evidence that md-ts root cost was
 reduced.
 
-The window-rewrite A/B benchmark compares the pre-change whole-range restore
-with production code on middle and short-tail views of a synthetic Markdown
-transcript. It fontifies the original viewport, then rewrites the full buffer
-before measuring restoration so the viewport's JIT state is dirty. Each variant
-runs in a fresh Emacs process. The harness checks the selected restore branch,
-point visibility, tail fill, and before/after viewport equivalence. GUI results
-are primary for JIT/font metrics; batch results are secondary. p95 is omitted
-unless at least 20 successful samples are collected.
+The window-rewrite A/B benchmark compares full-range and bounded restoration
+on middle and short-tail views of a synthetic Markdown transcript. It fontifies
+the original viewport, then rebuilds the full buffer before measuring so the
+viewport's JIT state is dirty. Each algorithm runs in a fresh Emacs process.
+The harness checks the selected restore branch, point visibility, tail fill,
+and viewport equivalence across algorithms. GUI results are primary for
+JIT/font metrics; batch results are secondary. p95 is omitted unless at least
+20 successful samples are collected.
 
 Table fixtures live in `bench/fixtures/tables.md`. Reload/resume artifacts are
 written under `tmp/reload-resume-bench/`, tool-update artifacts under

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-window-rewrite-bench.sh - Compare legacy and bounded window restoration
+# run-window-rewrite-bench.sh - Compare full-range and bounded restoration
 #
 # Usage:
 #   ./bench/run-window-rewrite-bench.sh                  # GUI via xvfb
@@ -138,7 +138,7 @@ mkdir -p -- "$OUT_DIR"
 touch -- "$BENCH_MARKER"
 
 for case_name in middle short-tail; do
-    for variant in before after; do
+    for variant in full-range bounded; do
         for ((iteration = 1; iteration <= REPS; iteration++)); do
             run_dir="$OUT_DIR/$case_name/$variant/iter-$(printf '%02d' "$iteration")"
             mkdir -p "$run_dir"
@@ -235,18 +235,18 @@ pairs: dict[tuple[str, Any], dict[str, dict[str, Any]]] = defaultdict(dict)
 for row in rows:
     pairs[(str(row["case"]), row["iteration"])][str(row["variant"])] = row
 for (case_name, iteration), pair in pairs.items():
-    before = pair.get("before")
-    after = pair.get("after")
-    if before and after and (
-        before["windowStart"] != after["windowStart"]
-        or before["pointRow"] != after["pointRow"]
+    full_range = pair.get("full-range")
+    bounded = pair.get("bounded")
+    if full_range and bounded and (
+        full_range["windowStart"] != bounded["windowStart"]
+        or full_range["pointRow"] != bounded["pointRow"]
     ):
         error = (
-            f"viewport differs from before run {iteration}: "
-            f"start {before['windowStart']} vs {after['windowStart']}, "
-            f"point row {before['pointRow']} vs {after['pointRow']}"
+            f"viewport differs between algorithms at iteration {iteration}: "
+            f"start {full_range['windowStart']} vs {bounded['windowStart']}, "
+            f"point row {full_range['pointRow']} vs {bounded['pointRow']}"
         )
-        for row in (before, after):
+        for row in (full_range, bounded):
             row["ok"] = False
             row["error"] = error
 
@@ -263,7 +263,7 @@ summary = [
     "",
     f"- Mode: `{mode}`; repetitions: `{reps}`",
     f"- Transcript: `{turns}` turns × `{lines_per_turn}` lines per turn",
-    "- `before` reproduces the pre-change whole-range counts and `recenter`; `after` calls production restore code.",
+    "- Full-range uses whole-range screen-line counts and recentering; bounded uses production restore code.",
     "- Each measurement ran in a fresh Emacs process; GUI/xvfb is primary because JIT-lock and font metrics matter.",
     f"- Markdown tree-sitter grammar available on all runs: `{bool(rows) and all(row['markdownGrammarAvailable'] for row in rows)}`",
     "- p95 uses nearest-rank and is omitted when fewer than 20 successful samples are available.",
@@ -273,9 +273,9 @@ summary = [
 ]
 print("\nA/B summary")
 print("viewport     variant  median-ms  p95-ms  max-ms  timers-med  GC-ms  lines  ok")
-change_notes: list[str] = []
+comparison_notes: list[str] = []
 for case_name in ("middle", "short-tail"):
-    for variant in ("before", "after"):
+    for variant in ("full-range", "bounded"):
         items = groups.get((case_name, variant), [])
         good = [row for row in items if row["ok"]]
         if not good:
@@ -295,21 +295,20 @@ for case_name in ("middle", "short-tail"):
             f"{statistics.median(timers):.0f} | {statistics.median(gc_ms):.2f} | "
             f"{good[0]['bufferLines']} | {len(good)}/{len(items)} |"
         )
-    before = groups.get((case_name, "before"), [])
-    after = groups.get((case_name, "after"), [])
-    before_times = [float(row["restoreMs"]) for row in before if row["ok"]]
-    after_times = [float(row["restoreMs"]) for row in after if row["ok"]]
-    if before_times and after_times:
-        before_median = statistics.median(before_times)
-        after_median = statistics.median(after_times)
-        reduction = 100.0 * (before_median - after_median) / before_median if before_median else 0.0
-        change_notes.append(
-            f"- `{case_name}` median restore change: `{before_median:.2f} ms` → "
-            f"`{after_median:.2f} ms` ({reduction:+.1f}% reduction)."
+    full_range = groups.get((case_name, "full-range"), [])
+    bounded = groups.get((case_name, "bounded"), [])
+    full_range_times = [float(row["restoreMs"]) for row in full_range if row["ok"]]
+    bounded_times = [float(row["restoreMs"]) for row in bounded if row["ok"]]
+    if full_range_times and bounded_times:
+        full_range_median = statistics.median(full_range_times)
+        bounded_median = statistics.median(bounded_times)
+        comparison_notes.append(
+            f"- `{case_name}` median restore time: full-range "
+            f"`{full_range_median:.2f} ms`; bounded `{bounded_median:.2f} ms`."
         )
 
 failed = [row for row in rows if not row["ok"]]
-summary.extend(["", *change_notes, "", "## Artifacts", "", f"- CSV: `{csv_path}`", "- Per-run JSON: `CASE/VARIANT/iter-NN/result.json`"])
+summary.extend(["", *comparison_notes, "", "## Artifacts", "", f"- CSV: `{csv_path}`", "- Per-run JSON: `CASE/ALGORITHM/iter-NN/result.json`"])
 if failed:
     summary.extend(["", "## Failed runs", ""])
     for row in failed:
@@ -324,7 +323,7 @@ if not rows:
 incomplete = any(
     len(groups.get((case_name, variant), [])) != reps
     for case_name in ("middle", "short-tail")
-    for variant in ("before", "after")
+    for variant in ("full-range", "bounded")
 )
 if failed or incomplete:
     print("ERROR: benchmark run or result matrix incomplete", file=sys.stderr)
