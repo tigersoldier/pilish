@@ -36,6 +36,7 @@ VERBOSE ?=
 .PHONY: bench-tool-update bench-tool-update-batch bench-tool-update-smoke
 .PHONY: bench-stream-delta bench-stream-delta-batch bench-stream-delta-smoke
 .PHONY: bench-agent-end-cooling bench-agent-end-cooling-batch bench-agent-end-cooling-smoke
+.PHONY: bench-window-rewrite bench-window-rewrite-batch bench-window-rewrite-smoke
 .PHONY: check check-parens compile lint lint-checkdoc lint-package clean clean-cache help
 .PHONY: ollama-start ollama-stop ollama-status setup-pi install-hooks
 
@@ -70,6 +71,9 @@ help:
 	@echo "  make bench-agent-end-cooling       Deferred agent_end cooling benchmark (GUI via xvfb)"
 	@echo "  make bench-agent-end-cooling-batch Deferred agent_end cooling benchmark (batch, secondary lane)"
 	@echo "  make bench-agent-end-cooling-smoke Cheap deferred cooling smoke (batch, no timing thresholds)"
+	@echo "  make bench-window-rewrite       Window-restore A/B benchmark (GUI via xvfb)"
+	@echo "  make bench-window-rewrite-batch Window-restore A/B benchmark (batch, secondary lane)"
+	@echo "  make bench-window-rewrite-smoke Cheap window-restore A/B smoke (batch)"
 	@echo "  make lint             Checkdoc + package-lint"
 	@echo "  make check            Compile, lint, unit tests (pre-commit)"
 	@echo "  make install-hooks    Set up git pre-commit hook"
@@ -340,6 +344,17 @@ bench-agent-end-cooling-batch: .deps-stamp
 bench-agent-end-cooling-smoke: .deps-stamp
 	@./bench/run-tool-update-bench.sh --batch --scenario agent-end-cooling-smoke -c 1 \
 		--out-dir tmp/agent-end-cooling-bench/smoke
+
+# Compare the legacy whole-transcript scans with bounded window restoration.
+bench-window-rewrite: .deps-stamp
+	@./bench/run-window-rewrite-bench.sh
+
+bench-window-rewrite-batch: .deps-stamp
+	@./bench/run-window-rewrite-bench.sh --batch
+
+bench-window-rewrite-smoke: .deps-stamp
+	@./bench/run-window-rewrite-bench.sh --batch -c 1 --turns 8 --lines-per-turn 10 \
+		--out-dir tmp/window-rewrite-bench/smoke
 
 # ============================================================
 # Ollama management (local development)

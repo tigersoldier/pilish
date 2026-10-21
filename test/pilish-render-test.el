@@ -5808,6 +5808,24 @@ replay output without it, byte for byte."
   "When the whole buffer is shorter than the window, preserve the highest visible row."
   (should (= 5 (pilish--clamp-rewrite-point-row 10 5 8 20))))
 
+(ert-deftest pilish-test-window-start-fills-window-bounds-screen-scan ()
+  "The viewport fill check walks only as many screen lines as it needs."
+  (with-temp-buffer
+    (let ((results '(23 10))
+          requested)
+      (cl-letf (((symbol-function 'count-screen-lines)
+                 (lambda (&rest _)
+                   (error "Unbounded screen-line counting is not allowed")))
+                ((symbol-function 'vertical-motion)
+                 (lambda (lines _window)
+                   (push lines requested)
+                   (pop results))))
+        (should (pilish--window-start-fills-window-p
+                 (point-min) 24 'test-window))
+        (should-not (pilish--window-start-fills-window-p
+                     (point-min) 24 'test-window)))
+      (should (equal (nreverse requested) '(23 23))))))
+
 ;;; Pandoc Conversion
 
 (ert-deftest pilish-test-message-start-marker-created ()
