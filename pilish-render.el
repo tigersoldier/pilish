@@ -8328,21 +8328,20 @@ clamp the row so the tail still fills the window after the rewrite."
 
 (defun pilish--capture-window-rewrite-state (window point-max)
   "Return saved WINDOW state before a buffer rewrite.
-POINT-MAX is the old buffer end before the rewrite begins."
+POINT-MAX is the old buffer end before the rewrite begins.  ROW is measured
+only within WINDOW's visible range; offscreen points are clamped to its edges."
   (let* ((point (window-point window))
          (body-height (max 1 (window-body-height window)))
-         (row (count-screen-lines (window-start window)
-                                  point
-                                  nil
-                                  window)))
+         (start (window-start window))
+         (end (window-end window t))
+         (row (cond
+               ((< point start) (- body-height))
+               ((> point end) body-height)
+               (t (count-screen-lines start point nil window)))))
     (list :window window
           :tail-p (pilish--rewrite-tail-window-p
-                   point
-                   (window-end window t)
-                   point-max
-                   row
-                   body-height)
-          :start (window-start window)
+                   point end point-max row body-height)
+          :start start
           :point point
           :thinking-block (pilish--thinking-block-at-pos point)
           :live-thinking-start (pilish--live-thinking-start-at-pos point)
@@ -8393,13 +8392,30 @@ provided, or clamp it into the rewritten buffer."
 
 (defun pilish--window-start-fills-window-p (start body-height window)
   "Return non-nil when START still fills WINDOW after a rewrite.
-Probe at most BODY-HEIGHT minus one visible screen lines, rather than counting
-the entire transcript tail."
+Probe at most one fewer than BODY-HEIGHT screen lines using WINDOW's display
+layout, instead of counting the entire transcript tail."
   (let ((required-lines (max 0 (1- body-height))))
     (save-excursion
       (goto-char start)
       (>= (vertical-motion required-lines window)
           required-lines))))
+
+(defun pilish--bounded-tail-screen-lines (start body-height window)
+  "Count screen lines from START through the tail, capped at BODY-HEIGHT.
+Match `count-screen-lines' for short tails, including its final-newline
+convention, while keeping motion proportional to WINDOW's height."
+  (let ((limit (max 1 body-height))
+        (end (point-max)))
+    (save-excursion
+      (goto-char start)
+      (let* ((moved (abs (vertical-motion limit window)))
+             (reached-end (>= (point) end))
+             (has-final-newline
+              (and (> end (point-min))
+                   (eq (char-before end) ?\n)))
+             (inclusive-row (if (and reached-end (not has-final-newline))
+                                1 0)))
+        (max 1 (min limit (+ moved inclusive-row)))))))
 
 (defun pilish--restore-window-rewrite-state
     (window-state &optional map-position)
@@ -8438,22 +8454,14 @@ nil for positions deleted by the rewrite."
                           (goto-char point)
                           (abs (vertical-motion (- above-limit) win))))
                        (tail-lines
-                        (max 1
-                             (save-excursion
-                               (goto-char point)
-                               (abs (vertical-motion body-height win)))))
+                        (pilish--bounded-tail-screen-lines
+                         point body-height win))
                        (row (pilish--clamp-rewrite-point-row
                              (plist-get window-state :row)
                              above-lines
                              tail-lines
-                             body-height))
-                       (new-start
-                        (save-excursion
-                          (goto-char point)
-                          (vertical-motion (- row) win)
-                          (point))))
-                  (set-window-start win new-start t)
-                  (set-window-point win point))))))))))
+                             body-height)))
+                  (recenter row))))))))))
 
 (defun pilish--restore-window-rewrite-states
     (buffer window-states &optional map-position)

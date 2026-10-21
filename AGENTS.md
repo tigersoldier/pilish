@@ -228,8 +228,12 @@ reduced.
 
 The window-rewrite A/B benchmark compares the pre-change whole-range restore
 with production code on middle and short-tail views of a synthetic Markdown
-transcript; each variant runs in a fresh Emacs process. GUI results are primary
-for JIT/font metrics; batch results are secondary.
+transcript. It fontifies the original viewport, then rewrites the full buffer
+before measuring restoration so the viewport's JIT state is dirty. Each variant
+runs in a fresh Emacs process. The harness checks the selected restore branch,
+point visibility, tail fill, and before/after viewport equivalence. GUI results
+are primary for JIT/font metrics; batch results are secondary. p95 is omitted
+unless at least 20 successful samples are collected.
 
 Table fixtures live in `bench/fixtures/tables.md`. Reload/resume artifacts are
 written under `tmp/reload-resume-bench/`, tool-update artifacts under

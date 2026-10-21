@@ -115,7 +115,7 @@ fi
 export PI_WR_BENCH_PROJECT_DIR="$PROJECT_DIR"
 EMACS_INIT=(
     -Q -L "$PROJECT_DIR"
-    --eval '(setq inhibit-startup-screen t)'
+    --eval '(setq inhibit-startup-screen t load-prefer-newer t)'
     --eval '(require (quote package))'
     --eval '(let ((dir (getenv "PACKAGE_USER_DIR"))) (when dir (setq package-user-dir (directory-file-name (expand-file-name dir)))))'
     --eval '(package-initialize)'
@@ -161,7 +161,7 @@ for case_name in middle short-tail; do
             else
                 if ! xvfb-run -a env GDK_BACKEND=x11 PATH="$PATH" \
                     "$EMACS_BIN" --geometry 120x40 "${EMACS_INIT[@]}" \
-                    --eval '(let ((standard-output (function external-debugging-output))) (kill-emacs (if (pilish-wr-bench--run-one) 0 1)))' \
+                    --eval '(let ((standard-output (function external-debugging-output))) (condition-case err (kill-emacs (if (pilish-wr-bench--run-one) 0 1)) (error (princ (format "Benchmark error: %s\n" err)) (kill-emacs 1))))' \
                     </dev/null > "$run_dir/stdout.log" 2> "$run_dir/stderr.log"; then
                     cat "$run_dir/stdout.log"
                     cat "$run_dir/stderr.log" >&2
@@ -207,17 +207,19 @@ for result_path in sorted(out.glob("**/result.json")):
             "gcMs": float(result.get("gcMs") or 0),
             "bufferLines": int(result.get("bufferLines") or 0),
             "bodyHeight": int(result.get("bodyHeight") or 0),
+            "restoreBranch": result.get("restoreBranch") or "",
+            "expectedBranch": result.get("expectedBranch") or "",
+            "windowStart": result.get("windowStart"),
+            "windowEnd": result.get("windowEnd"),
+            "pointRow": result.get("pointRow"),
+            "viewportOk": result.get("viewportPreserved") is True,
+            "markdownGrammarAvailable": result.get("markdownGrammarAvailable") is True,
             "error": result.get("error") or "",
             "resultPath": str(result_path),
         }
     )
 
 csv_path = out / "summary.csv"
-if rows:
-    with csv_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -229,6 +231,31 @@ groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
 for row in rows:
     groups[(str(row["case"]), str(row["variant"]))].append(row)
 
+pairs: dict[tuple[str, Any], dict[str, dict[str, Any]]] = defaultdict(dict)
+for row in rows:
+    pairs[(str(row["case"]), row["iteration"])][str(row["variant"])] = row
+for (case_name, iteration), pair in pairs.items():
+    before = pair.get("before")
+    after = pair.get("after")
+    if before and after and (
+        before["windowStart"] != after["windowStart"]
+        or before["pointRow"] != after["pointRow"]
+    ):
+        error = (
+            f"viewport differs from before run {iteration}: "
+            f"start {before['windowStart']} vs {after['windowStart']}, "
+            f"point row {before['pointRow']} vs {after['pointRow']}"
+        )
+        for row in (before, after):
+            row["ok"] = False
+            row["error"] = error
+
+if rows:
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
 summary = [
     "# Pilish window-rewrite A/B benchmark",
     "",
@@ -238,13 +265,15 @@ summary = [
     f"- Transcript: `{turns}` turns × `{lines_per_turn}` lines per turn",
     "- `before` reproduces the pre-change whole-range counts and `recenter`; `after` calls production restore code.",
     "- Each measurement ran in a fresh Emacs process; GUI/xvfb is primary because JIT-lock and font metrics matter.",
+    f"- Markdown tree-sitter grammar available on all runs: `{bool(rows) and all(row['markdownGrammarAvailable'] for row in rows)}`",
+    "- p95 uses nearest-rank and is omitted when fewer than 20 successful samples are available.",
     "",
-    "| viewport | variant | median restore ms | p95 restore ms | max restore ms | median timer delta | median GC ms | buffer lines | successful runs |",
+    "| viewport | variant | median restore ms | p95 restore ms (n≥20) | max restore ms | median timer delta | median GC ms | buffer lines | successful runs |",
     "|---|---|---:|---:|---:|---:|---:|---:|---:|",
 ]
 print("\nA/B summary")
 print("viewport     variant  median-ms  p95-ms  max-ms  timers-med  GC-ms  lines  ok")
-failed = [row for row in rows if not row["ok"]]
+change_notes: list[str] = []
 for case_name in ("middle", "short-tail"):
     for variant in ("before", "after"):
         items = groups.get((case_name, variant), [])
@@ -257,11 +286,12 @@ for case_name in ("middle", "short-tail"):
         timers = [float(row["timerDelta"]) for row in good]
         gc_ms = [float(row["gcMs"]) for row in good]
         median_ms = statistics.median(times)
-        p95_ms = percentile(times, 0.95)
+        p95_ms = percentile(times, 0.95) if len(times) >= 20 else None
+        p95_text = f"{p95_ms:.2f}" if p95_ms is not None else "n/a"
         max_ms = max(times)
-        print(f"{case_name:<12} {variant:<7} {median_ms:9.2f} {p95_ms:7.2f} {max_ms:7.2f} {statistics.median(timers):11.0f} {statistics.median(gc_ms):6.2f} {good[0]['bufferLines']:6d} {len(good)}/{len(items)}")
+        print(f"{case_name:<12} {variant:<7} {median_ms:9.2f} {p95_text:>7} {max_ms:7.2f} {statistics.median(timers):11.0f} {statistics.median(gc_ms):6.2f} {good[0]['bufferLines']:6d} {len(good)}/{len(items)}")
         summary.append(
-            f"| {case_name} | {variant} | {median_ms:.2f} | {p95_ms:.2f} | {max_ms:.2f} | "
+            f"| {case_name} | {variant} | {median_ms:.2f} | {p95_text} | {max_ms:.2f} | "
             f"{statistics.median(timers):.0f} | {statistics.median(gc_ms):.2f} | "
             f"{good[0]['bufferLines']} | {len(good)}/{len(items)} |"
         )
@@ -273,9 +303,13 @@ for case_name in ("middle", "short-tail"):
         before_median = statistics.median(before_times)
         after_median = statistics.median(after_times)
         reduction = 100.0 * (before_median - after_median) / before_median if before_median else 0.0
-        summary.extend(["", f"- `{case_name}` median restore change: `{before_median:.2f} ms` → `{after_median:.2f} ms` ({reduction:+.1f}% reduction)."])
+        change_notes.append(
+            f"- `{case_name}` median restore change: `{before_median:.2f} ms` → "
+            f"`{after_median:.2f} ms` ({reduction:+.1f}% reduction)."
+        )
 
-summary.extend(["", "## Artifacts", "", f"- CSV: `{csv_path}`", "- Per-run JSON: `CASE/VARIANT/iter-NN/result.json`"])
+failed = [row for row in rows if not row["ok"]]
+summary.extend(["", *change_notes, "", "## Artifacts", "", f"- CSV: `{csv_path}`", "- Per-run JSON: `CASE/VARIANT/iter-NN/result.json`"])
 if failed:
     summary.extend(["", "## Failed runs", ""])
     for row in failed:
@@ -287,7 +321,12 @@ print(f"Wrote {summary_path}")
 if not rows:
     print("ERROR: no benchmark result rows found", file=sys.stderr)
     raise SystemExit(1)
-if failed or any(not groups.get((case_name, variant)) for case_name in ("middle", "short-tail") for variant in ("before", "after")):
+incomplete = any(
+    len(groups.get((case_name, variant), [])) != reps
+    for case_name in ("middle", "short-tail")
+    for variant in ("before", "after")
+)
+if failed or incomplete:
     print("ERROR: benchmark run or result matrix incomplete", file=sys.stderr)
     raise SystemExit(1)
 PY

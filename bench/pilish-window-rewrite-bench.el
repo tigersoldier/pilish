@@ -8,10 +8,11 @@
 
 ;; Compare the pre-optimization whole-transcript window restore with the
 ;; current bounded implementation on a synthetic Markdown chat buffer.  Each
-;; variant/case runs in a fresh Emacs process so JIT-lock's deferred timers do
-;; not leak from one measurement into another.  The GUI/xvfb lane is primary;
-;; batch results are structural diagnostics only.  Timing is never a pass/fail
-;; threshold.
+;; run rewrites the whole transcript after fontifying the original viewport,
+;; then measures restoration with fresh JIT-lock state.  Each variant/case runs
+;; in a fresh Emacs process so timers do not leak between measurements.  The
+;; GUI/xvfb lane is primary; batch results are structural diagnostics only.
+;; Timing is never a pass/fail threshold.
 
 ;;; Code:
 
@@ -63,6 +64,16 @@
    (pilish-wr-bench--env "PI_WR_BENCH_OUT_DIR" "tmp/window-rewrite-bench"))
   "Output directory for this benchmark process.")
 
+(defvar pilish-wr-bench--recorded-branch nil
+  "Restore branch recorded by the current benchmark run.")
+
+(defun pilish-wr-bench--record-fill-decision
+    (original start body-height window)
+  "Call ORIGINAL fill check and record its decision for the benchmark."
+  (let ((fills (funcall original start body-height window)))
+    (setq pilish-wr-bench--recorded-branch (if fills "fill" "fallback"))
+    fills))
+
 (defun pilish-wr-bench--restore-before (window-state)
   "Restore WINDOW-STATE using the pre-optimization whole-transcript scans.
 This is a frozen copy of the old restore algorithm for A/B comparison."
@@ -84,19 +95,23 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
                      (plist-get window-state :start)
                      nil
                      point)))
-              (if (>= (count-screen-lines saved-start point-max nil win)
-                      (1- body-height))
-                  (progn
-                    (set-window-start win saved-start t)
-                    (set-window-point win (max point saved-start)))
-                (let* ((above-lines
-                        (count-screen-lines (point-min) point nil win))
-                       (tail-lines
-                        (max 1 (count-screen-lines point point-max nil win)))
-                       (row (pilish--clamp-rewrite-point-row
-                             (plist-get window-state :row)
-                             above-lines tail-lines body-height)))
-                  (recenter row))))))))))
+              (let ((fills
+                     (>= (count-screen-lines saved-start point-max nil win)
+                         (1- body-height))))
+                (setq pilish-wr-bench--recorded-branch
+                      (if fills "fill" "fallback"))
+                (if fills
+                    (progn
+                      (set-window-start win saved-start t)
+                      (set-window-point win (max point saved-start)))
+                  (let* ((above-lines
+                          (count-screen-lines (point-min) point nil win))
+                         (tail-lines
+                          (max 1 (count-screen-lines point point-max nil win)))
+                         (row (pilish--clamp-rewrite-point-row
+                               (plist-get window-state :row)
+                               above-lines tail-lines body-height)))
+                    (recenter row)))))))))))
 
 (defun pilish-wr-bench--history-text ()
   "Return a deterministic Markdown transcript at the configured size."
@@ -137,8 +152,8 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
     (set-window-start window start t)
     (set-window-point window point)
     (when (display-graphic-p)
-      ;; Fontify what the user can see, but deliberately leave the transcript
-      ;; tail unfontified so the legacy full-range walk exposes its JIT cost.
+      ;; Establish a warm viewport, then the benchmark rewrites the entire
+      ;; buffer so this visible region becomes dirty before restoration.
       (redisplay t))
     (with-current-buffer (window-buffer window)
       (setq state
@@ -170,6 +185,16 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
         (gc-ms 0.0)
         (point-ok nil)
         (window-ok nil)
+        (viewport-ok nil)
+        (fill-branch nil)
+        (expected-branch (if (equal pilish-wr-bench-case "middle")
+                             "fill" "fallback"))
+        (window-start-position nil)
+        (window-end-position nil)
+        (point-row nil)
+        (markdown-grammar-available
+         (and (fboundp 'treesit-language-available-p)
+              (ignore-errors (treesit-language-available-p 'markdown))))
         (tail-p nil)
         (height 0)
         (buffer-lines 0))
@@ -179,20 +204,27 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
               (with-current-buffer buffer
                 (pilish-chat-mode)
                 (let ((inhibit-read-only t))
-                  (insert (pilish-wr-bench--history-text))
-                  (setq buffer-lines (count-lines (point-min) (point-max)))))
+                  (insert (pilish-wr-bench--history-text))))
               (save-window-excursion
                 (delete-other-windows)
                 (switch-to-buffer buffer)
                 (setq window (selected-window)
                       height (window-body-height window)
                       state (pilish-wr-bench--make-window-state window))
-                ;; Simulate a rewrite at the end after saving the user's view.
-                (with-current-buffer buffer
-                  (let ((inhibit-read-only t))
-                    (goto-char (point-max))
-                    (insert "\nCompleted benchmark rewrite with **bold** and [a link](https://example.test/final).\n")))
+                ;; Simulate a full history replay: erase and reinsert the same
+                ;; transcript so the previously fontified viewport is dirty.
+                (let ((rewritten-text
+                       (with-current-buffer buffer
+                         (buffer-substring-no-properties
+                          (point-min) (point-max)))))
+                  (with-current-buffer buffer
+                    (let ((inhibit-read-only t))
+                      (erase-buffer)
+                      (insert rewritten-text
+                              "\nCompleted benchmark rewrite with **bold** and [a link](https://example.test/final).\n")
+                      (setq buffer-lines (count-lines (point-min) (point-max))))))
                 (setq tail-p (plist-get state :tail-p)
+                      pilish-wr-bench--recorded-branch nil
                       timer-before (length timer-list)
                       gc-before gcs-done
                       gc-time-before gc-elapsed)
@@ -200,22 +232,48 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
                   (if (equal pilish-wr-bench-variant "before")
                       (with-current-buffer buffer
                         (pilish-wr-bench--restore-before state))
-                    (with-current-buffer buffer
-                      (pilish--restore-window-rewrite-state state)))
+                    (advice-add 'pilish--window-start-fills-window-p :around
+                                #'pilish-wr-bench--record-fill-decision)
+                    (unwind-protect
+                        (with-current-buffer buffer
+                          (pilish--restore-window-rewrite-state state))
+                      (advice-remove 'pilish--window-start-fills-window-p
+                                     #'pilish-wr-bench--record-fill-decision)))
                   (setq restore-ms (* 1000.0 (- (float-time) started))))
-                ;; Record scheduler state after timing so inspection cost is not
-                ;; included in the restore measurement.
+                ;; Record scheduler and viewport state after timing so inspection
+                ;; cost is not included in the restore measurement.
                 (setq timer-after (length timer-list)
                       gc-count (- gcs-done gc-before)
                       gc-ms (* 1000.0 (- gc-elapsed gc-time-before))
+                      fill-branch pilish-wr-bench--recorded-branch
                       point-ok (= (window-point window)
                                   (plist-get state :point))
-                      window-ok (eq (window-buffer window) buffer))))
+                      window-ok (eq (window-buffer window) buffer)
+                      window-start-position (window-start window)
+                      window-end-position (window-end window t)
+                      point-row
+                      (with-current-buffer buffer
+                        (count-screen-lines window-start-position
+                                            (window-point window) nil window))
+                      viewport-ok
+                      (and (<= window-start-position (window-point window))
+                           (<= (window-point window) window-end-position)
+                           (if (equal pilish-wr-bench-case "middle")
+                               (= window-start-position
+                                  (plist-get state :start))
+                             (and (>= window-end-position (point-max))
+                                  (>= (with-current-buffer buffer
+                                        (count-screen-lines
+                                         window-start-position (point-max)
+                                         nil window))
+                                      (1- height))))))))
           (error
            (setq restore-error (error-message-string err))))
       (when (buffer-live-p buffer)
         (kill-buffer buffer)))
-    (let* ((ok (and (null restore-error) (not tail-p) point-ok window-ok))
+    (let* ((branch-ok (equal fill-branch expected-branch))
+           (ok (and (null restore-error) (not tail-p) point-ok window-ok
+                    viewport-ok branch-ok))
            (result-file (expand-file-name "result.json"
                                            pilish-wr-bench-out-dir))
            (result
@@ -223,6 +281,8 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
                   :case pilish-wr-bench-case
                   :emacsVersion emacs-version
                   :displayMode (if (display-graphic-p) "gui" "batch")
+                  :markdownGrammarAvailable
+                  (if markdown-grammar-available t :json-false)
                   :iteration pilish-wr-bench-iteration
                   :turns pilish-wr-bench-turns
                   :linesPerTurn pilish-wr-bench-lines-per-turn
@@ -237,8 +297,14 @@ This is a frozen copy of the old restore algorithm for A/B comparison."
                   :tailFollowing (if tail-p t :json-false)
                   :pointPreserved (if point-ok t :json-false)
                   :windowPreserved (if window-ok t :json-false)
+                  :restoreBranch fill-branch
+                  :expectedBranch expected-branch
+                  :windowStart window-start-position
+                  :windowEnd window-end-position
+                  :pointRow point-row
+                  :viewportPreserved (if viewport-ok t :json-false)
                   :ok (if ok t :json-false)
-                  :error (or restore-error :json-null))))
+                  :error (or restore-error json-null))))
       (with-temp-file result-file
         (insert (json-encode result) "\n"))
       (princ (format "Wrote %s\n" result-file))
